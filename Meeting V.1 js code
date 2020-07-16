@@ -1,0 +1,418 @@
+Form{{uid}} = {
+	uid:{{uid}},
+	
+	response_FRAG : undefined,
+	comment_FRAG : undefined,
+	commentList_FRAG : undefined,
+	uploadList_FRAG : undefined,
+		
+	commentList : [],
+	responseList : [],
+	uploadedResources : [],	
+		
+		
+		
+	documentLoad : function(handlebarFragments){
+		console.log("Document load called");
+		var ref = Form{{uid}};
+		
+		$('#fileUpload').on('change', function() {
+			let fileName = $(this).val().split('\\').pop();
+			$(this).next('.custom-file-label').addClass("selected").html(fileName);
+		});
+		$('#meetingDateId').datetimepicker({
+		 		"format": 'dddd, DD MMM, YYYY',
+			    
+		 	});	
+		
+		$('#meetingStartTime').datetimepicker({
+			"format": 'HH:mm',
+		});
+		
+		$('#meetingEndTime').datetimepicker({
+			"format": 'HH:mm',
+		});
+	
+		$("#IkonFormModalDialog").css("width", "800px");
+		$("#usersnameListId").chosen();
+		
+		ref.handlebarsFragment = handlebarFragments;
+		ref.comment_FRAG = handlebarFragments[0].hbfragmentHtml;
+		ref.response_FRAG = handlebarFragments[1].hbfragmentHtml;
+		ref.commentList_FRAG = handlebarFragments[2].hbfragmentHtml;
+		ref.uploadList_FRAG = handlebarFragments[3].hbfragmentHtml;
+	},
+		
+	prepopulate : function(callback){
+		console.log("Prepopulate called");
+		var ref = Form{{uid}};
+		FormHelper.submitLoadFunctions(
+			ref.uid,
+			[
+				{
+					function : IkonService.getMyInstancesV2,
+					arguments : ["User Dashboard Platform Util",globalAccountId,{ "taskName" : "User Dashboard Query Activity" },null,null,null,["Data"],false],
+					successCallback : function(){
+						console.log(arguments[0]);
+						var details = arguments[0];
+						var taskId = details[0].taskId;
+						IkonService.getDataForTaskId(
+							taskId,
+							function () {
+								// $("#IkonContentDiv").removeClass("sk-loading");
+								console.log(arguments[0]);
+								console.log("True");
+								ref.users = arguments[0].details;
+								for(var i=0;i<ref.users.length;i++){
+									var userlist = ref.users[i].USER_NAME;
+									$("#usersnameListId").append("<option value=\"" + userlist + "\">" + userlist + "</option>")
+								}
+									$("#usersnameListId").trigger("chosen:updated");
+								callback();
+							},
+							function () {
+								// $("#IkonContentDiv").removeClass("sk-loading");
+								callback();
+							}
+						)
+					},
+					failureCallback : function(){
+						console.log("false");
+						console.log(arguments[0]);					
+					}
+				}
+			]		
+		);	
+		FormHelper.loadExternalData(ref.uid);
+	
+	},
+			
+		
+	populateData : function(data, handlebarFragments){
+		var ref = Form{{uid}};
+		console.log("Populate data called");
+		if(data){
+            console.log(data.Priority);
+			
+			if(data.Priority== true){
+				$("#CheckBoxId").attr("checked", true);
+				console.log(document.getElementById("CheckBoxId").checked);
+				
+			}else{
+				$("#CheckBoxId").attr("checked", false);
+				console.log(document.getElementById("CheckBoxId").checked);
+			}
+			
+			$('#meetingDateId').datetimepicker("destroy");
+			$('#meetingDateId').datetimepicker(
+				{
+					"format": 'dddd, DD MMM, YYYY',
+					"date":moment(data["Meeting Date"], "dddd, DD MMM, YYYY")
+				}
+			);
+			
+			$('#meetingStartTime').datetimepicker("destroy");
+			$('#meetingStartTime').datetimepicker(
+				{
+					"format": 'HH:mm',
+					"date":moment(data["Meeting Start"], "HH:mm")
+				}
+			);
+			
+			$('#meetingEndTime').datetimepicker("destroy");
+			$('#meetingEndTime').datetimepicker(
+				{
+					"format": 'HH:mm',
+					"date":moment(data["Meeting End"], "HH:mm")
+				}
+			);
+			
+			$("#usersnameListId").val(data["Participants"]);
+			$("#usersnameListId").trigger("chosen:updated");
+			$("#meetingSubjectId").val(data["Subject"]);
+		    $("#meetingPlaceId").val(data["Meeting Place"]);	
+			$("#meetingDescId").val(data["Meeting Description"]);
+			$("#meetingMinutesId").val(data["Meeting Minutes"]);
+			
+			ref.uploadedResources = data.uploadedResources;
+		    ref.commentList = data.comments;
+		    ref.responseList = data.Responses,
+		    ref.populateUploads();		
+		    ref.populateComments();	
+			
+		}
+	
+	},
+		
+	extractData : function(){
+		var ref = Form{{uid}};
+		console.log("Extract data called");
+		 console.log( document.getElementById("CheckBoxId").checked);
+		ref.extractComments();
+		return {
+			"comments" : ref.commentList,
+			"Priority" : document.getElementById("CheckBoxId").checked,
+			"Meeting Start" : moment($("#meetingStartTime").datetimepicker('viewDate').toDate()).format("HH:mm"),
+			"Meeting End" : moment($("#meetingEndTime").datetimepicker('viewDate').toDate()).format("HH:mm"),
+			"Subject" : $("#meetingSubjectId").val().trim(),
+			"Meeting Place" : $("#meetingPlaceId").val(),
+			"Meeting Description" : $("#meetingDescId").val(),
+			"Participants" : $("#usersnameListId").val(),
+			"Meeting Date" :moment($("#meetingDateId").datetimepicker('viewDate').toDate()).format("dddd, DD MMM, YYYY"),
+			"Responses" : ref.responseList,
+			"Meeting Minutes" : $("#meetingMinutesId").val(),
+			"uploadedResources":ref.uploadedResources
+		};
+	},
+	
+	acceptenceList : function(){
+		var ref = Form{{uid}};
+		$("#responseDiv").show();
+		$("#btnCloseList").show();
+		let templateFnt = Handlebars.compile(ref.response_FRAG );
+		let contentUpdate = templateFnt({
+			"responseList": ref.responseList,
+		});
+		$("#divResponseList").html(contentUpdate);
+	},	
+		
+	bindActions : function(){
+		var ref = Form{{uid}};
+		$("#btnSaveOwner").on("click", function(){
+			if(!ref.validateStart()){
+				return;
+			}
+			FormUtil.uploadFiles(ref.uid, ["fileUpload"], function(fileInfoArray){
+				if(fileInfoArray.length > 0){
+					ref.uploadedResources.push(fileInfoArray[0]);	
+				}
+				FormHelper.startProcess(ref.uid);
+			});
+		});
+		
+		$("#btnSaveParticipatants").on("click", function(){
+			if(!ref.validateStart()){
+				return;
+			}
+			
+			FormUtil.uploadFiles(ref.uid, ["fileUpload"], function(fileInfoArray){
+				if(fileInfoArray.length > 0){
+					ref.uploadedResources.push(fileInfoArray[0]);	
+				}
+				FormHelper.invokeAction(ref.uid, "Participants Update");
+			});			
+			
+		});
+		
+		$("#btnOwneUpdater").on("click", function(){
+			if(!ref.validateStart()){
+				return;
+			}
+			
+			FormUtil.uploadFiles(ref.uid, ["fileUpload"], function(fileInfoArray){
+				if(fileInfoArray.length > 0){
+					ref.uploadedResources.push(fileInfoArray[0]);	
+				}
+				FormHelper.invokeAction(ref.uid, "Owner Update");
+			});			
+			
+		});
+		
+		$("#btnAccept").on("click", function(){
+			var ref = Form{{uid}};
+			console.log("-----Inside Accept");
+			$("#btnAccept").attr("disabled", true);
+			$("#btnReject").attr("disabled", true);
+			ref.responseList =[] ;
+			let obj ={
+				"Name" : Globals.profile.value.USER_NAME.value,
+				"Status" : "Accepted"
+			};
+			ref.responseList.push(obj);
+		
+			FormUtil.uploadFiles(ref.uid, ["fileUpload"], function(fileInfoArray){
+				if(fileInfoArray.length > 0){
+					ref.uploadedResources.push(fileInfoArray[0]);	
+				}
+				FormHelper.invokeAction(ref.uid, "Participants Close");
+			});	
+			 l.ladda('stop');
+			
+		});
+		
+		$("#btnSubmitOwner").on("click", function(){
+			if(!ref.validateStart()){
+				return;
+			}
+			
+			FormUtil.uploadFiles(ref.uid, ["fileUpload"], function(fileInfoArray){
+				if(fileInfoArray.length > 0){
+					ref.uploadedResources.push(fileInfoArray[0]);	
+				}
+				FormHelper.invokeAction(ref.uid, "Owner Close");
+			});			
+			
+		});
+	},
+		
+	validateStart : function(){
+		if($("#meetingSubjectId").val()==""){
+			sweetalertValidate("Provide Subject");
+			return false;
+		}
+		if($("#usersnameListId").val()==""){
+			sweetalertValidate("Select Participants");
+			return false;
+		}
+		if($("[id='meetingDateId']").data("datetimepicker").date()==null){
+			sweetalertValidate("Provide Meeting Date ");
+			return false;
+		}
+		if($("[id='meetingStartTime']").data("datetimepicker").date()==null){
+			sweetalertValidate("Provide Meeting Time ");
+			return false;
+		}
+		
+		if($("[id='meetingEndTime']").data("datetimepicker").date()==null){
+			sweetalertValidate("Provide Meeting Time ");
+			return false;
+		}
+		
+		
+		if($("#meetingPlaceId").val()==""){
+			sweetalertValidate("Provide Meeting Place");
+			return false;
+		}
+			
+		return true;
+	},
+		
+	extractComments : function() {
+		var ref = Form{{uid}};
+		
+		ref.commentList = [];
+		
+		let children = $("#divCommentBox").children();
+		
+		for(let i = 0; i < children.length; i++) {
+			let eid = children[i].id + "_txa";
+			let c = $("#" + eid).val();
+			
+			ref.commentList.push(c);
+		}
+	},	
+		
+	populateComments : function() {
+		var ref = Form{{uid}};
+
+		if(ref.commentList == undefined) {
+			return;
+		}
+		
+		let commentArr = [];
+		
+		for(let i = 0; i < ref.commentList.length; i++) {
+			let item = ref.commentList[i];
+			
+			let obj = {};
+			obj.cid = i;
+			obj.uid = {{uid}};
+		
+			commentArr.push(obj);
+		}
+		
+		$("#divCommentBox").html("");
+		let templateFnt = Handlebars.compile(ref.commentList_FRAG);
+		let contentUpdate = templateFnt({
+			"ListItem": commentArr,
+		});
+		$("#divCommentBox").html(contentUpdate);
+
+		for(let i = 0; i < ref.commentList.length; i++) {
+			let el = document.getElementById("commentBox_" + i + "_txa");
+			el.value = ref.commentList[i];
+		}
+	},
+		
+	populateUploads : function() {
+		var ref = Form{{uid}};
+
+		if(ref.uploadedResources == undefined || ref.uploadedResources.length <= 0) {
+			return;
+		}
+
+		let uploadArr = [];
+
+		for(let i = 0; i < ref.uploadedResources.length; i++) {
+			let item = ref.uploadedResources[i];
+
+			let obj = {};
+			obj.idx = i;
+			obj.name = ref.uploadedResources[i].resourceName;
+			obj.uid = {{uid}};
+
+		uploadArr.push(obj);
+	}
+
+   $("#divDownloadBox").html("");
+   let templateFnt = Handlebars.compile(ref.uploadList_FRAG);
+   let contentUpdate = templateFnt({
+	"ListItem": uploadArr,
+    });
+        $("#divDownloadBox").html(contentUpdate);
+  },	
+		
+   addComment : function() {
+		var ref = Form{{uid}};
+
+		let templateFnt = Handlebars.compile(ref.comment_FRAG);
+		let contentUpdate = templateFnt({
+			"cid" : new Date().getTime(),
+			"uid" : {{uid}},
+		});
+		$("#divCommentBox").prepend(contentUpdate);
+	},	
+		
+	deleteComment :function(cid) {
+		var ref = Form{{uid}};
+
+		$("#commentBox_" + cid).remove();
+	},
+		
+	rejectedResponse :function(){
+		var ref = Form{{uid}};
+		$("#btnAccept").attr("disabled", true);
+		$("#btnReject").attr("disabled", true);
+		$("#btnSubmitParticipants").attr("disabled", false);
+		
+		ref.responseList =[] ;
+		let obj ={
+			"Name" : Globals.profile.value.USER_NAME.value,
+			"Status" : "Rejected"
+		};
+		ref.responseList.push(obj);
+		
+		FormUtil.uploadFiles(ref.uid, ["fileUpload"], function(fileInfoArray){
+			if(fileInfoArray.length > 0){
+				ref.uploadedResources.push(fileInfoArray[0]);	
+			}
+			FormHelper.invokeAction(ref.uid, "Participants Close");
+		});			
+	},	
+		
+	closeList : function(){
+		$("#responseDiv").hide();
+	},	
+	 
+	downloadResource : function(idx) {
+		var ref = Form{{uid}};
+
+		if(ref.uploadedResources != undefined & ref.uploadedResources.length > 0) {
+			FormUtil.downloadResource(
+				ref.uploadedResources[idx].resourceId, 
+				ref.uploadedResources[idx].resourceName, 
+				ref.uploadedResources[idx].resourceType);
+		}
+	},
+		
+};
